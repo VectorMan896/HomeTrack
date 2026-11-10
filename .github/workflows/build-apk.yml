@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write          # needed to create tags/releases
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -38,9 +41,34 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Read app version
+        id: ver
+        run: echo "name=$(grep -oP 'versionName \"\K[^\"]+' android/app/build.gradle)" >> "$GITHUB_OUTPUT"
+
+      - name: Stage APK with a friendly name
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "dist/HomeTrack-${{ steps.ver.outputs.name }}-build${{ github.run_number }}-debug.apk"
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: hometrack-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: dist/HomeTrack-*.apk
           if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}-build.${{ github.run_number }}
+          name: HomeTrack ${{ steps.ver.outputs.name }} (build ${{ github.run_number }})
+          body: |
+            Automated debug build from `${{ github.sha }}`.
+
+            Download the `.apk` below and install it on Android
+            (you may need to allow "install from unknown sources").
+          files: dist/HomeTrack-*.apk
+          draft: false
+          prerelease: false
