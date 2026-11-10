@@ -1,0 +1,9 @@
+{
+  "name": "hometrack-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HomeTrack local bridge — ComfyUI/Fooocus gallery + thumbnails, Ollama & ComfyUI proxy.",
+  "dependencies": {
+    "jimp": "0.22.12"
+  }
+}

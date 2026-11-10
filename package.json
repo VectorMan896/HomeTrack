@@ -1,0 +1,22 @@
+{
+  "name": "hometrack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Track prepaid power, water, and household budget — with automatic M-Pesa/bank SMS capture.",
+  "scripts": {
+    "sync": "cap sync android",
+    "open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/browser": "^6.0.6",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/filesystem": "^6.0.4",
+    "@capacitor/local-notifications": "^6.1.3",
+    "@capacitor/share": "^6.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.2.0"
+  }
+}

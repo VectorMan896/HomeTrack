@@ -1,0 +1,8 @@
+{
+  "appId": "com.hometrack.app",
+  "appName": "HomeTrack",
+  "webDir": "www",
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

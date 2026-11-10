@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1117" />
+  <meta name="description" content="Track prepaid power, water, and your household budget in one place." />
+  <title>HomeTrack</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon-512.png" />
+  <link rel="apple-touch-icon" href="icon-512.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <div class="brand">
+        <img class="brand-mark-img" id="brandMark" src="icon-512.png" alt="HomeTrack" />
+        <div>
+          <h1 id="brandTitle">HomeTrack</h1>
+          <p class="brand-sub" id="brandSub">Home</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="quickAddBtn" title="Add" aria-label="Add">＋</button>
+    </header>
+
+    <div id="alertBanner" class="alert-banner hidden" role="alert"></div>
+
+    <main id="views">
+      <section class="module" data-module="overview"></section>
+      <section class="module hidden" data-module="power"></section>
+      <section class="module hidden" data-module="water"></section>
+      <section class="module hidden" data-module="budget"></section>
+      <section class="module hidden" data-module="studio"></section>
+      <section class="module hidden" data-module="settings"></section>
+    </main>
+
+    <nav class="tab-bar">
+      <button class="tab active" data-nav="overview"><span>◈</span>Home</button>
+      <button class="tab" data-nav="power"><span>⚡</span>Power</button>
+      <button class="tab" data-nav="water"><span>💧</span>Water</button>
+      <button class="tab" data-nav="budget"><span>💰</span>Budget</button>
+      <button class="tab" data-nav="settings"><span>⚙</span>Settings</button>
+    </nav>
+  </div>
+
+  <!-- Generic modal host -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="card-head">
+        <h2 id="modalTitle">—</h2>
+        <button class="icon-btn" id="modalClose" aria-label="Close">✕</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/core.js"></script>
+  <script src="js/power.js"></script>
+  <script src="js/water.js"></script>
+  <script src="js/budget.js"></script>
+  <script src="js/overview.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/sms.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/studio.js"></script>
+  <script src="js/notify.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
