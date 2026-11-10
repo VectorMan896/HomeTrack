@@ -32,8 +32,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Sync Capacitor
-        run: npx cap sync android
+      - name: Copy web assets into Android
+        # The android/ platform (incl. plugin wiring) is committed, so a plain
+        # `cap copy` is all the build needs — `cap sync` also runs `cap update`,
+        # which re-derives that wiring and is what fails on the Linux runner.
+        run: npx cap copy android
 
       - name: Build debug APK
         run: |
