@@ -23,18 +23,61 @@
     }
     return out;
   }
+  // Keep only trustworthy reading-intervals (real consumption, positive span).
+  function cleanIntervals() {
+    let ivs = intervals().filter(iv => iv.rate != null && iv.consumed >= 0 && iv.days > 0);
+    // Guard against a mistyped reading skewing everything: once there are enough
+    // samples, drop intervals whose rate is wildly off the median.
+    if (ivs.length >= 5) {
+      const sorted = ivs.map(iv => iv.rate).sort((a, b) => a - b), m = Math.floor(sorted.length / 2);
+      const med = sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
+      if (med > 0) ivs = ivs.filter(iv => iv.rate <= med * 6 && iv.rate >= med / 6);
+    }
+    return ivs;
+  }
+  // Recency-weighted pooled rate: recent days count more, so the forecast keeps up
+  // with how usage changes. Longer intervals still carry proportionally more weight.
+  function weightedRate(ivs, halflife) {
+    const now = Date.now(); let wc = 0, wd = 0;
+    for (const iv of ivs) {
+      const age = Math.max(0, (now - t(iv.end)) / DAY);
+      const w = halflife > 0 ? Math.exp(-age / halflife) : 1;
+      wc += w * iv.consumed; wd += w * iv.days;
+    }
+    return wd > 0 ? wc / wd : null;
+  }
+  // Cold-start estimate learned from top-ups, before there are two readings to compare.
+  // Energy burned between the first and last recharge ≈ everything added except the most
+  // recent top-up (assuming you recharge at a similar low level each time).
+  function rechargeThroughput() {
+    const rc = recharges().filter(r => r.kwh > 0);
+    if (rc.length < 2) return null;
+    const spanDays = (t(rc[rc.length - 1].t) - t(rc[0].t)) / DAY;
+    if (spanDays < 1) return null;
+    const burned = rc.slice(0, -1).reduce((s, r) => s + r.kwh, 0);
+    const rate = burned / spanDays;
+    return rate > 0 && isFinite(rate) ? { rate, days: spanDays, samples: rc.length } : null;
+  }
+  const plural = (n) => n === 1 ? '' : 's';
+  // The learned daily consumption rate. Priority: your readings → your recharges →
+  // appliances (only a hint) → the assumed default. Appliances never override real usage.
   function avgDailyRate() {
     const win = P().settings.window;
     const cutoff = win > 0 ? Date.now() - win * DAY : -Infinity;
-    const valid = intervals().filter(iv => iv.rate != null && iv.consumed >= 0 && t(iv.end) >= cutoff);
-    if (!valid.length) {
-      const any = intervals().filter(iv => iv.rate != null && iv.consumed >= 0);
-      if (!any.length) return { rate: P().settings.assumed, basis: 'assumed', samples: 0 };
-      const c = any.reduce((s, iv) => s + iv.consumed, 0), d = any.reduce((s, iv) => s + iv.days, 0);
-      return { rate: c / d, basis: 'all history', samples: any.length };
+    const ivs = cleanIntervals();
+    const inWin = ivs.filter(iv => t(iv.end) >= cutoff);
+    const pick = inWin.length ? inWin : ivs;
+    if (pick.length) {
+      const halflife = win > 0 ? Math.max(3, win / 2) : 30;
+      const rate = weightedRate(pick, halflife);
+      const scope = inWin.length && win > 0 ? `last ${win} days` : 'all readings';
+      return { rate, basis: `learned from ${pick.length} reading${plural(pick.length)} · ${scope}`, samples: pick.length, source: 'readings' };
     }
-    const c = valid.reduce((s, iv) => s + iv.consumed, 0), d = valid.reduce((s, iv) => s + iv.days, 0);
-    return { rate: c / d, basis: win > 0 ? `last ${win} days` : 'all history', samples: valid.length };
+    const rt = rechargeThroughput();
+    if (rt) return { rate: rt.rate, basis: `learned from your ${rt.samples} recharges`, samples: rt.samples, source: 'recharges' };
+    const modeled = modeledTotal();
+    if (modeled > 0) return { rate: modeled, basis: 'estimated from appliances · log a 2nd reading to learn', samples: P().appliances.length, source: 'appliances' };
+    return { rate: P().settings.assumed, basis: 'default · log readings to learn', samples: 0, source: 'assumed' };
   }
   function latestRate() {
     const rc = recharges();
@@ -42,15 +85,15 @@
     return DEFAULT_RATE;
   }
   function situation() {
-    const rs = readings(); const { rate, basis, samples } = avgDailyRate();
-    if (!rs.length) return { hasData: false, rate, basis, samples };
+    const rs = readings(); const { rate, basis, samples, source } = avgDailyRate();
+    if (!rs.length) return { hasData: false, rate, basis, samples, source };
     const anchor = rs[rs.length - 1];
     const addedSince = recharges().filter(r => t(r.t) > t(anchor.t)).reduce((s, r) => s + r.kwh, 0);
     const daysSince = Math.max(0, (Date.now() - t(anchor.t)) / DAY);
     const estimated = Math.max(0, anchor.kwh + addedSince - rate * daysSince);
     const daysRemaining = rate > 0 ? estimated / rate : Infinity;
     const emptyAt = rate > 0 ? new Date(Date.now() + daysRemaining * DAY) : null;
-    return { hasData: true, rate, basis, samples, anchor, estimated, daysRemaining, emptyAt, ratePerKwh: latestRate() };
+    return { hasData: true, rate, basis, samples, source, anchor, estimated, daysRemaining, emptyAt, ratePerKwh: latestRate() };
   }
   function alertLevel(s) {
     if (!s.hasData) return 'none';
@@ -180,9 +223,12 @@
     // appliances
     const list = P().appliances.map(a => ({ ...a, kwh: applianceKwh(a) })).sort((x, y) => y.kwh - x.kwh);
     const total = list.reduce((s2, a) => s2 + a.kwh, 0);
-    const measured = s.hasData ? s.rate : null;
+    // "Measured" means a rate actually learned from your readings/recharges — not the
+    // appliance model standing in at cold start (that would trivially "match itself").
+    const measured = (s.source === 'readings' || s.source === 'recharges') ? s.rate : null;
     let modelHint = 'Tune each appliance to match reality; the bar shows the mix by category.';
     if (measured != null && total > 0) { const diff = measured - total; const pct = Math.abs(diff / total * 100); modelHint = Math.abs(diff) < 0.5 ? 'Your appliance model closely matches measured usage. 👌' : diff > 0 ? `Measured use is ${num(diff, 1)} kWh/day (${num(pct, 0)}%) above modeled.` : `Measured use is ${num(-diff, 1)} kWh/day (${num(pct, 0)}%) below modeled.`; }
+    if (total > 0) modelHint += ' The days-remaining forecast always uses your readings — this model is just for comparison.';
     html += `<div class="card summary-card">
         <div class="summary-row"><div><span class="summary-label">Modeled/day</span><span class="summary-value">${num(total, 1)}</span></div><div><span class="summary-label">Measured/day</span><span class="summary-value">${measured != null ? num(measured, 1) : '–'}</span></div></div>
         <div class="model-bar">${list.map(a => `<i style="width:${total ? a.kwh / total * 100 : 0}%;background:${CAT_COLORS[a.category] || '#888'}"></i>`).join('')}</div>
@@ -196,7 +242,7 @@
     const st = P().settings;
     html += `<div class="card"><div class="card-head"><h2>Power settings</h2></div><form class="form" data-p="settings">
         <div class="row"><label class="field"><span>Alert below (kWh)</span><input type="number" step="1" name="alertKwh" value="${st.alertKwh}"></label><label class="field"><span>…or below (days)</span><input type="number" step="0.5" name="alertDays" value="${st.alertDays}"></label></div>
-        <div class="row"><label class="field"><span>Predict on last</span><select name="window">${[['7', '7 days'], ['14', '14 days'], ['30', '30 days'], ['0', 'All history']].map(([v, l]) => `<option value="${v}" ${st.window == v ? 'selected' : ''}>${l}</option>`).join('')}</select></label><label class="field"><span>Assumed kWh/day</span><input type="number" step="0.1" name="assumed" value="${st.assumed}"></label></div>
+        <div class="row"><label class="field"><span>Learn from last</span><select name="window">${[['7', '7 days'], ['14', '14 days'], ['30', '30 days'], ['0', 'All history']].map(([v, l]) => `<option value="${v}" ${st.window == v ? 'selected' : ''}>${l}</option>`).join('')}</select></label><label class="field"><span>Starting estimate kWh/day <em>until it learns</em></span><input type="number" step="0.1" name="assumed" value="${st.assumed}"></label></div>
       </form></div>`;
 
     el.innerHTML = html;

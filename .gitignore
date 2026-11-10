@@ -16,5 +16,8 @@ android/app/src/main/assets/capacitor.plugins.json
 .DS_Store
 *.log
 
+# Editor / Claude Code local config
+.claude/
+
 # Bridge thumbnail cache (regenerated automatically)
 bridge/.thumbcache/
